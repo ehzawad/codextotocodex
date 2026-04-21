@@ -44,6 +44,12 @@ from .source import iter_session_files, read_session_meta
 PROGRESS_INTERVAL_SECONDS = 15
 
 
+def _validate_workers(workers: int) -> int:
+    if workers < 1:
+        raise ValueError("--workers must be >= 1")
+    return workers
+
+
 def find_all_sessions(project_filter: str | None = None) -> list[tuple[str, Path]]:
     """Find all session JSONL files across all projects."""
     sessions = []
@@ -103,6 +109,7 @@ async def async_batch_process(
     retry_failed: bool = False,
 ):
     """Process all existing sessions with parallel workers."""
+    workers = _validate_workers(workers)
     save_default_config()
     config = load_config()
     # Honor ~/.codex-chronicle/config.json's max_retries; the daemon does. Without
@@ -257,6 +264,11 @@ def main():
                         help="Retry sessions in .failed/ terminal state "
                              "(e.g. after fixing a PATH or config issue)")
     args = parser.parse_args()
+    try:
+        _validate_workers(args.workers)
+    except ValueError as e:
+        print(f"\nError: {e}", file=sys.stderr)
+        sys.exit(1)
 
     # In background mode, pause the service manager so launchd/systemd
     # doesn't respawn the daemon while we process. The processing lock

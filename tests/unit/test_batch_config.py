@@ -6,6 +6,7 @@ config/behavior drift between daemon (respected config) and batch
 from __future__ import annotations
 
 import asyncio
+import sys
 
 import pytest
 
@@ -101,3 +102,20 @@ async def test_batch_passes_config_max_retries_to_write_chronicle(
     assert received.get("max_retries") == 7, (
         f"batch ignored config max_retries (got {received})"
     )
+
+
+@pytest.mark.asyncio
+async def test_batch_rejects_zero_workers(isolated):
+    from codex_chronicle import batch
+    with pytest.raises(ValueError, match="--workers must be >= 1"):
+        await batch.async_batch_process(workers=0)
+
+
+def test_cli_rejects_zero_workers(isolated, monkeypatch, capsys):
+    from codex_chronicle import batch
+    monkeypatch.setattr(sys, "argv", ["codex_chronicle.process", "--workers", "0"])
+    with pytest.raises(SystemExit) as excinfo:
+        batch.main()
+    assert excinfo.value.code == 1
+    err = capsys.readouterr().err
+    assert "--workers must be >= 1" in err

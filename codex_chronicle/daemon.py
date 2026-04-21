@@ -58,6 +58,13 @@ from .source import iter_session_files, read_session_meta
 from .summarizer import async_summarize_session
 
 
+def _validated_concurrency(config: dict) -> int:
+    concurrency = int(config.get("concurrency", 5))
+    if concurrency < 1:
+        raise ValueError("config.concurrency must be >= 1")
+    return concurrency
+
+
 def _read_offset() -> int:
     if offset_file().exists():
         try:
@@ -117,7 +124,7 @@ async def _process_batch(events: list[tuple[str, dict]], config: dict) -> list[t
     Returns (session_id, event) pairs that should be retried on the next
     debounce cycle. Sessions that exceed max_retries are given up on.
     """
-    concurrency = config.get("concurrency", 5)
+    concurrency = _validated_concurrency(config)
     semaphore = asyncio.Semaphore(concurrency)
     tasks = [
         _async_process_one(event, config, semaphore)
