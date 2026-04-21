@@ -1,0 +1,76 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Packaging / build artifacts
+*.egg
+*.egg-info/
+build/
+dist/
+build-venv/
+wheels/
+*.whl
+MANIFEST
+pip-wheel-metadata/
+
+# PyInstaller
+*.spec
+*.manifest
+
+# Virtual envs
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# --- Tooling caches ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+*.log
+
+# --- Codex Chronicle runtime state ---
+# Never commit the user's local chronicle data or the Codex session rollouts
+# they reference. Both live under $HOME by default, so this is belt-and-braces
+# for anyone who runs the tool with CODEX_CHRONICLE_HOME pointed inside the repo.
+.chronicle/
+.codex-chronicle/
+.codex/
+claude-code-docs/
+
+# --- Editor / IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# --- Claude Code scratch ---
+# Project-local Claude Code settings are shared (.claude/settings.json), but
+# per-user overrides and session transcripts should stay local.
+.claude/settings.local.json
+.claude/sessions/
+.claude/projects/
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+
+# --- OS junk ---
+Thumbs.db
+ehthumbs.db
+desktop.ini
