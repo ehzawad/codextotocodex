@@ -50,8 +50,25 @@ codex_hooks = true
 
 in `~/.codex/config.toml`. Restart Codex after installing hooks.
 
-The `install.sh` script is wired for future prebuilt release assets. Until a
-release exists, prefer the editable install above.
+For a user-style install outside the checkout:
+
+```bash
+bash install.sh
+```
+
+`install.sh` prefers a prebuilt release asset when one exists. If no matching
+asset is published yet, it falls back to a source-based install under:
+
+```text
+~/.codex-chronicle/runtime/venv
+```
+
+and creates these symlinks:
+
+```text
+~/.local/bin/codex-chronicle
+~/.local/bin/codex-chronicle-hook
+```
 
 ## Default Mode
 
@@ -84,12 +101,19 @@ codex-chronicle query search "auth"
 codex-chronicle process --dry-run
 codex-chronicle process --workers 5
 codex-chronicle process --project my-project --workers 5
+codex-chronicle process --project=-Users-name-project --workers 5
 codex-chronicle process --retry-failed --workers 5
 
 codex-chronicle rewind
 codex-chronicle insight my-project
 codex-chronicle story my-project
+codex-chronicle update
 ```
+
+Notes:
+
+- `--workers` must be `>= 1`.
+- If a project filter starts with `-`, prefer the `--project=<value>` form.
 
 ## Codex-Specific Design
 
