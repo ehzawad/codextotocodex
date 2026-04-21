@@ -33,6 +33,13 @@ def _matches_project(meta, needle: str) -> bool:
     )
 
 
+def _format_option(flag: str, value: str) -> str:
+    quoted = shlex.quote(value)
+    if value.startswith("-"):
+        return f"{flag}={quoted}"
+    return f"{flag} {quoted}"
+
+
 def _pending_source_sessions(name: str | None = None):
     from .storage import is_succeeded, is_terminal_failure
 
@@ -174,8 +181,8 @@ def sessions(project_path: str | None = None):
                 print("Mode=foreground - summarization only happens on demand.")
             process_filter = pending[0].project_slug
             print("\nTo process now:")
-            print("  codex-chronicle process --project "
-                  f"{shlex.quote(process_filter)} --workers 5")
+            print("  codex-chronicle process "
+                  f"{_format_option('--project', process_filter)} --workers 5")
             return
         print(f"No sessions found for '{cwd}'")
         return

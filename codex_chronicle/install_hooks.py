@@ -8,40 +8,50 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import sys
 from pathlib import Path
 
+from .launcher import resolve_hook_invocation, shell_join
+
 HOOK_COMMAND = "codex-chronicle-hook"
 
-CHRONICLE_HOOKS = {
-    "SessionStart": [
-        {
-            "matcher": "startup|resume",
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": HOOK_COMMAND,
-                    "statusMessage": "Loading Codex Chronicle context...",
-                    "timeout": 30,
-                }
-            ],
-        }
-    ],
-    "UserPromptSubmit": [
-        {
-            "hooks": [
-                {"type": "command", "command": HOOK_COMMAND, "timeout": 30}
-            ],
-        }
-    ],
-    "Stop": [
-        {
-            "hooks": [
-                {"type": "command", "command": HOOK_COMMAND, "timeout": 30}
-            ],
-        }
-    ],
-}
+
+def resolved_hook_command() -> str:
+    return shell_join(resolve_hook_invocation())
+
+
+def chronicle_hooks() -> dict:
+    command = resolved_hook_command()
+    return {
+        "SessionStart": [
+            {
+                "matcher": "startup|resume",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": command,
+                        "statusMessage": "Loading Codex Chronicle context...",
+                        "timeout": 30,
+                    }
+                ],
+            }
+        ],
+        "UserPromptSubmit": [
+            {
+                "hooks": [
+                    {"type": "command", "command": command, "timeout": 30}
+                ],
+            }
+        ],
+        "Stop": [
+            {
+                "hooks": [
+                    {"type": "command", "command": command, "timeout": 30}
+                ],
+            }
+        ],
+    }
 
 
 def default_hooks_path() -> Path:
@@ -101,7 +111,7 @@ def install_hooks(settings_path: str | None = None):
     if not isinstance(hooks, dict):
         hooks = {}
 
-    for event_name, chronicle_matchers in CHRONICLE_HOOKS.items():
+    for event_name, chronicle_matchers in chronicle_hooks().items():
         existing = hooks.get(event_name, [])
         if not isinstance(existing, list):
             existing = []
@@ -120,8 +130,16 @@ def install_hooks(settings_path: str | None = None):
 def _is_chronicle_hook_command(cmd) -> bool:
     if not isinstance(cmd, str) or not cmd.strip():
         return False
-    first = cmd.strip().split(None, 1)[0]
-    return os.path.basename(first) in {HOOK_COMMAND, "chronicle-hook"}
+    try:
+        parts = shlex.split(cmd)
+    except ValueError:
+        return False
+    if not parts:
+        return False
+    first = os.path.basename(parts[0])
+    if first in {HOOK_COMMAND, "chronicle-hook"}:
+        return True
+    return len(parts) >= 3 and parts[1] == "-m" and parts[2] == "codex_chronicle.hook"
 
 
 def uninstall_hooks(settings_path: str | None = None, dry_run: bool = False) -> int:

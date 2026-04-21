@@ -59,7 +59,7 @@ def test_suggested_command_uses_slug_not_raw_path(
     captured = capsys.readouterr().out
 
     # Must print the slug, NOT the raw path, as the --project value
-    assert f"--project {slug}" in captured
+    assert f"--project={slug}" in captured
     for line in captured.splitlines():
         if "codex-chronicle process --project" in line:
             assert str(project_cwd) not in line, (
@@ -87,9 +87,11 @@ def test_suggestion_is_substring_of_slug(isolated_query, tmp_path, monkeypatch, 
     for line in captured.splitlines():
         if "codex-chronicle process --project" in line:
             parts = line.strip().split()
-            assert "--project" in parts
-            idx = parts.index("--project")
-            suggested = parts[idx + 1]
+            suggested = next(
+                (part.split("=", 1)[1] for part in parts if part.startswith("--project=")),
+                None,
+            )
+            assert suggested is not None
             # The suggestion must substring-match the actual slug (which is
             # how batch.find_all_sessions filters).
             assert suggested in slug, (

@@ -93,3 +93,23 @@ class TestModeDriftWarnings:
             processing_mode="background", installed=True, running=True,
         )
         assert warnings == []
+
+
+def test_plist_uses_python_module_fallback_when_cli_missing(tmp_path, monkeypatch):
+    fake_home = tmp_path / "home"
+    (fake_home / ".codex-chronicle").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+
+    import importlib
+    import codex_chronicle.config
+    import codex_chronicle.service
+    importlib.reload(codex_chronicle.config)
+    importlib.reload(codex_chronicle.service)
+
+    from codex_chronicle import service as svc_mod
+
+    plist = svc_mod._mac_plist_contents()
+    assert "<string>-m</string>" in plist
+    assert "<string>codex_chronicle</string>" in plist
+    assert "<string>daemon</string>" in plist

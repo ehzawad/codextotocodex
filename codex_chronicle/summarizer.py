@@ -17,9 +17,50 @@ from .codex_cli import ErrorKind, spawn_codex
 from .config import load_config
 from .extractor import SessionDigest, digest_to_text, timeline_to_log
 
+
+def _strict_schema(schema: dict) -> dict:
+    """Recursively apply Codex's strict object-schema requirement.
+
+    Current Codex CLI rejects object schemas unless `additionalProperties` is
+    present and false on every object node.
+    """
+    if not isinstance(schema, dict):
+        return schema
+
+    strict = dict(schema)
+    if strict.get("type") == "object":
+        strict["additionalProperties"] = False
+        props = strict.get("properties")
+        if isinstance(props, dict):
+            strict["properties"] = {
+                key: _strict_schema(value) if isinstance(value, dict) else value
+                for key, value in props.items()
+            }
+            strict["required"] = list(strict["properties"].keys())
+
+    items = strict.get("items")
+    if isinstance(items, dict):
+        strict["items"] = _strict_schema(items)
+    elif isinstance(items, list):
+        strict["items"] = [
+            _strict_schema(item) if isinstance(item, dict) else item
+            for item in items
+        ]
+
+    for key in ("anyOf", "oneOf", "allOf"):
+        value = strict.get(key)
+        if isinstance(value, list):
+            strict[key] = [
+                _strict_schema(item) if isinstance(item, dict) else item
+                for item in value
+            ]
+
+    return strict
+
+
 # JSON Schema for structured output validation via --output-schema.
 # Codex must return data matching this schema; the CLI validates it.
-CHRONICLE_JSON_SCHEMA = {
+CHRONICLE_JSON_SCHEMA = _strict_schema({
     "type": "object",
     "properties": {
         "is_empty": {
@@ -115,7 +156,7 @@ CHRONICLE_JSON_SCHEMA = {
         "cross_references": {"type": "array", "items": {"type": "string"}},
     },
     "required": ["is_empty", "title"],
-}
+})
 
 SUMMARIZATION_PROMPT = """\
 You are writing a high-fidelity engineering chronicle from a Codex session transcript.
@@ -126,8 +167,11 @@ reconstruct what happened, why it happened, what failed, and what evidence chang
 the developer's mind.
 
 NON-NEGOTIABLE RULES:
+- The response schema is strict. Always return every field in the schema. When \
+there is nothing useful for a field, use an empty string, empty array, or empty \
+object of the correct shape rather than omitting the field.
 - If the session contains no meaningful technical work, set is_empty to true and \
-provide only a brief title. All other fields are optional when is_empty is true.
+use a brief title. Keep the remaining fields structurally valid but empty.
 - Preserve chronology. Keep cause -> investigation -> decision -> verification in order.
 - Preserve exact concrete facts: filenames, commands, flags, config keys, env vars, \
 versions, counts, timings, sizes, model names, error text, exit codes, benchmark results.

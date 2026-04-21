@@ -47,6 +47,7 @@ class TestResolveCodexBinary:
         fake_home.mkdir()
         monkeypatch.setenv("HOME", str(fake_home))
         monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+        monkeypatch.setattr(codex_cli, "_fallback_bin_dirs", lambda: [])
         with pytest.raises(codex_cli.CodexNotFound):
             codex_cli.resolve_codex_binary()
 
@@ -55,6 +56,7 @@ class TestResolveCodexBinary:
         fake_home.mkdir()
         monkeypatch.setenv("HOME", str(fake_home))
         monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+        monkeypatch.setattr(codex_cli, "_fallback_bin_dirs", lambda: [])
         assert codex_cli.try_resolve_codex_binary() is None
 
     def test_caches_result(self, tmp_path, monkeypatch):
@@ -72,6 +74,7 @@ class TestResolveCodexBinary:
         fake_home = tmp_path / "home"
         fake_home.mkdir()
         monkeypatch.setenv("HOME", str(fake_home))
+        monkeypatch.setattr(codex_cli, "_fallback_bin_dirs", lambda: [])
         bin_dir = tmp_path / "bin"
         _make_stub_codex(bin_dir / "codex")
         monkeypatch.setenv("PATH", str(bin_dir))

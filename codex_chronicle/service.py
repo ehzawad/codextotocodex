@@ -23,6 +23,7 @@ launched by a service manager that doesn't source shell profiles.
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -31,6 +32,7 @@ from typing import Optional
 
 from .codex_cli import try_resolve_codex_binary
 from .config import chronicle_dir
+from .launcher import resolve_cli_invocation
 
 _MAC_LABEL = "com.codex_chronicle.daemon"
 _LINUX_UNIT = "codex-chronicle-daemon.service"
@@ -57,31 +59,21 @@ def _standard_path() -> str:
     return os.pathsep.join(parts)
 
 
-def _chronicle_binary() -> str:
-    """Absolute path to the CLI entry point used in launchd / systemd unit files.
-
-    For frozen PyInstaller builds, prefer sys.executable — that's the actual
-    binary running right now. shutil.which can pick up a dev checkout, a
-    stale symlink, or an older release on PATH and bake that into the
-    service file, leading to subtle drift.
-    """
-    if getattr(sys, "frozen", False):
-        return str(Path(sys.executable).resolve())
-    found = shutil.which("codex-chronicle")
-    if found:
-        return found
-    return str(Path.home() / ".local" / "bin" / "codex-chronicle")
+def _chronicle_command(*extra_args: str) -> list[str]:
+    """argv used in launchd / systemd unit files."""
+    return resolve_cli_invocation(*extra_args)
 
 
 # ---------- macOS (launchd) ----------
 
 def _mac_plist_contents() -> str:
-    chronicle_bin = _chronicle_binary()
+    chronicle_cmd = _chronicle_command("daemon")
     home = str(Path.home())
     path_val = _standard_path()
     codex = try_resolve_codex_binary()
     codex_hint = f"    <!-- resolved codex at install: {codex} -->\n" if codex else ""
     log_path = chronicle_dir() / "daemon.log"
+    args_xml = "\n".join(f"        <string>{arg}</string>" for arg in chronicle_cmd)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -90,8 +82,7 @@ def _mac_plist_contents() -> str:
     <string>{_MAC_LABEL}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>{chronicle_bin}</string>
-        <string>daemon</string>
+{args_xml}
     </array>
     <key>WorkingDirectory</key>
     <string>{home}</string>
@@ -137,6 +128,13 @@ def _mac_is_loaded() -> bool:
     return res.returncode == 0
 
 
+def _mac_is_running() -> bool:
+    res = _mac_run(["launchctl", "print", f"gui/{os.getuid()}/{_MAC_LABEL}"])
+    if res.returncode != 0:
+        return False
+    return "state = running" in res.stdout
+
+
 def _mac_install() -> bool:
     """Write plist and (re)bootstrap. Returns True if launchd accepted the job."""
     _MAC_PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -154,7 +152,7 @@ def _mac_uninstall() -> None:
 # ---------- Linux (systemd --user) ----------
 
 def _linux_unit_contents() -> str:
-    chronicle_bin = _chronicle_binary()
+    chronicle_cmd = shlex.join(_chronicle_command("daemon"))
     path_val = _standard_path()
     return f"""[Unit]
 Description=Codex Chronicle Daemon
@@ -165,7 +163,7 @@ Type=simple
 WorkingDirectory=%h
 Environment="PATH={path_val}"
 Environment="CODEX_CHRONICLE_HOME={chronicle_dir()}"
-ExecStart={chronicle_bin} daemon
+ExecStart={chronicle_cmd}
 Restart=on-failure
 RestartSec=10
 
@@ -254,7 +252,7 @@ def service_running() -> bool:
     if p == "macos":
         if not shutil.which("launchctl"):
             return False
-        return _mac_is_loaded()
+        return _mac_is_running()
     if p == "linux":
         if not shutil.which("systemctl"):
             return False
@@ -282,7 +280,7 @@ def pause_service() -> bool:
     if p == "macos":
         if not shutil.which("launchctl"):
             return False
-        was_running = _mac_is_loaded()
+        was_running = _mac_is_running()
         _mac_bootout()
         return was_running
     if p == "linux":

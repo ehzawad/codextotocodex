@@ -59,7 +59,7 @@ def test_non_object_json_refuses(tmp_path, capsys):
 
 
 def test_idempotent_reinstall_doesnt_duplicate_hooks(tmp_path):
-    from codex_chronicle.install_hooks import install_hooks, HOOK_COMMAND
+    from codex_chronicle.install_hooks import install_hooks, _is_chronicle_hook_command
     settings = tmp_path / "settings.json"
     install_hooks(str(settings))
     install_hooks(str(settings))  # run again
@@ -73,8 +73,25 @@ def test_idempotent_reinstall_doesnt_duplicate_hooks(tmp_path):
         chronicle_count = sum(
             1 for g in groups
             for h in g.get("hooks", [])
-            if h.get("command") == HOOK_COMMAND
+            if _is_chronicle_hook_command(h.get("command"))
         )
-        assert chronicle_count == 1, (
-            f"{event}: expected 1 {HOOK_COMMAND}, got {chronicle_count}"
-        )
+        assert chronicle_count == 1, f"{event}: expected 1 chronicle hook, got {chronicle_count}"
+
+
+def test_uses_python_module_fallback_when_no_hook_binary_on_path(tmp_path, monkeypatch):
+    from codex_chronicle.install_hooks import install_hooks
+    settings = tmp_path / "settings.json"
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    install_hooks(str(settings))
+    data = json.loads(settings.read_text())
+    commands = [
+        h["command"]
+        for groups in data["hooks"].values()
+        for group in groups
+        for h in group.get("hooks", [])
+    ]
+    assert commands
+    assert all("codex_chronicle.hook" in cmd for cmd in commands)

@@ -1,7 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-# Codex Chronicle installer - downloads a prebuilt binary release.
+# Codex Chronicle installer.
+# Prefers a prebuilt binary release, but falls back to a source-based venv
+# install when no release asset exists yet.
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/ehzawad/codextotocodex/main/install.sh | bash
 #
@@ -83,9 +85,11 @@ if [ "$VERSION" = "latest" ]; then
     # newest tagged release — no REST API call, no jq, no rate limit.
     ASSET_URL="$BASE_URL/latest/download/codex-chronicle-$TARGET.tar.gz"
     SHA_URL="$BASE_URL/latest/download/codex-chronicle-$TARGET.tar.gz.sha256"
+    SOURCE_URL="https://codeload.github.com/$REPO_SLUG/tar.gz/refs/heads/main"
 else
     ASSET_URL="$BASE_URL/download/$VERSION/codex-chronicle-$TARGET.tar.gz"
     SHA_URL="$BASE_URL/download/$VERSION/codex-chronicle-$TARGET.tar.gz.sha256"
+    SOURCE_URL="https://codeload.github.com/$REPO_SLUG/tar.gz/refs/tags/$VERSION"
 fi
 echo "Asset:    $ASSET_URL"
 
@@ -96,27 +100,47 @@ TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 cd "$TMPDIR"
 
-echo "Downloading..."
+INSTALL_MODE="prebuilt"
+echo "Downloading prebuilt release..."
+set +e
 curl -fL --progress-bar -o codex-chronicle.tar.gz "$ASSET_URL"
+ASSET_RC=$?
 curl -fsSL -o codex-chronicle.tar.gz.sha256 "$SHA_URL"
+SHA_RC=$?
+set -e
 
-echo "Verifying SHA256..."
-EXPECTED=$(awk '{print $1}' codex-chronicle.tar.gz.sha256)
-if command -v sha256sum >/dev/null 2>&1; then
-    ACTUAL=$(sha256sum codex-chronicle.tar.gz | awk '{print $1}')
+if [ "$ASSET_RC" -eq 0 ] && [ "$SHA_RC" -eq 0 ]; then
+    echo "Verifying SHA256..."
+    EXPECTED=$(awk '{print $1}' codex-chronicle.tar.gz.sha256)
+    if command -v sha256sum >/dev/null 2>&1; then
+        ACTUAL=$(sha256sum codex-chronicle.tar.gz | awk '{print $1}')
+    else
+        ACTUAL=$(shasum -a 256 codex-chronicle.tar.gz | awk '{print $1}')
+    fi
+    if [ "$EXPECTED" != "$ACTUAL" ]; then
+        echo "ERROR: SHA256 mismatch"
+        echo "  expected: $EXPECTED"
+        echo "  actual:   $ACTUAL"
+        exit 1
+    fi
+    echo "SHA256 ok: $ACTUAL"
+
+    echo "Extracting..."
+    tar -xzf codex-chronicle.tar.gz
 else
-    ACTUAL=$(shasum -a 256 codex-chronicle.tar.gz | awk '{print $1}')
+    INSTALL_MODE="source"
+    echo "No prebuilt release asset found for $TARGET."
+    echo "Falling back to source install from:"
+    echo "  $SOURCE_URL"
+    command -v python3 >/dev/null 2>&1 || {
+        echo "ERROR: python3 is required for source fallback installs."
+        exit 1
+    }
+    curl -fL --progress-bar -o codex-chronicle-src.tar.gz "$SOURCE_URL"
+    SOURCE_DIR="$(tar -tzf codex-chronicle-src.tar.gz | head -1 | cut -d/ -f1)"
+    echo "Extracting source..."
+    tar -xzf codex-chronicle-src.tar.gz
 fi
-if [ "$EXPECTED" != "$ACTUAL" ]; then
-    echo "ERROR: SHA256 mismatch"
-    echo "  expected: $EXPECTED"
-    echo "  actual:   $ACTUAL"
-    exit 1
-fi
-echo "SHA256 ok: $ACTUAL"
-
-echo "Extracting..."
-tar -xzf codex-chronicle.tar.gz
 
 # -----------------------------------------------------------------------------
 # 5. Clean up legacy install layouts
@@ -152,7 +176,15 @@ mkdir -p "$BIN_DIR" "$CHRONICLE_HOME"
 # dir from being live if something crashes mid-install.
 NEW_RUNTIME="$CHRONICLE_HOME/runtime.new"
 rm -rf "$NEW_RUNTIME"
-mv "codex-chronicle-$TARGET" "$NEW_RUNTIME"
+if [ "$INSTALL_MODE" = "prebuilt" ]; then
+    mv "codex-chronicle-$TARGET" "$NEW_RUNTIME"
+    RUNTIME_CLI_REL="codex-chronicle"
+    RUNTIME_HOOK_REL="codex-chronicle"
+else
+    mkdir -p "$NEW_RUNTIME"
+    RUNTIME_CLI_REL="venv/bin/codex-chronicle"
+    RUNTIME_HOOK_REL="venv/bin/codex-chronicle-hook"
+fi
 
 if [ -d "$RUNTIME_DIR" ]; then
     OLD_RUNTIME="$CHRONICLE_HOME/runtime.old"
@@ -162,6 +194,12 @@ fi
 mv "$NEW_RUNTIME" "$RUNTIME_DIR"
 rm -rf "$CHRONICLE_HOME/runtime.old"
 
+if [ "$INSTALL_MODE" = "source" ]; then
+    python3 -m venv "$RUNTIME_DIR/venv"
+    "$RUNTIME_DIR/venv/bin/pip" install --upgrade pip >/dev/null
+    "$RUNTIME_DIR/venv/bin/pip" install "./$SOURCE_DIR" >/dev/null
+fi
+
 # macOS: strip quarantine. curl-downloaded files rarely carry quarantine, but
 # tar can import it from individual entries, and some corporate MDM policies
 # attach it. Clearing it here avoids Gatekeeper killing every binary launch.
@@ -169,9 +207,12 @@ if [ "$OS" = "Darwin" ]; then
     xattr -dr com.apple.quarantine "$RUNTIME_DIR" 2>/dev/null || true
 fi
 
+RUNTIME_CLI="$RUNTIME_DIR/$RUNTIME_CLI_REL"
+RUNTIME_HOOK="$RUNTIME_DIR/$RUNTIME_HOOK_REL"
+
 # Relative symlinks so the install layout stays portable if $HOME moves.
-ln -sf "$RUNTIME_DIR/codex-chronicle" "$BIN_DIR/codex-chronicle"
-ln -sf "codex-chronicle" "$BIN_DIR/codex-chronicle-hook"
+ln -sf "$RUNTIME_CLI" "$BIN_DIR/codex-chronicle"
+ln -sf "$RUNTIME_HOOK" "$BIN_DIR/codex-chronicle-hook"
 
 # -----------------------------------------------------------------------------
 # 7. PATH check
@@ -228,10 +269,11 @@ fi
 # -----------------------------------------------------------------------------
 echo ""
 echo "Installed:"
-echo "  $BIN_DIR/codex-chronicle      -> $RUNTIME_DIR/codex-chronicle"
-echo "  $BIN_DIR/codex-chronicle-hook -> codex-chronicle"
+echo "  $BIN_DIR/codex-chronicle      -> $RUNTIME_CLI"
+echo "  $BIN_DIR/codex-chronicle-hook -> $RUNTIME_HOOK"
 echo "  runtime:                 $RUNTIME_DIR  ($(du -sh "$RUNTIME_DIR" 2>/dev/null | awk '{print $1}'))"
 echo "  version:                 $("$BIN_DIR/codex-chronicle" --version 2>/dev/null || echo 'unknown')"
+echo "  install mode:            $INSTALL_MODE"
 echo "  mode:                    $EFFECTIVE_MODE"
 echo ""
 echo "Installation complete!"
