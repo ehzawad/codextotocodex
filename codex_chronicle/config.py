@@ -158,13 +158,16 @@ def ensure_dirs(slug: str):
         os.chmod(sessions, 0o700)
 
 
-def load_recent_titles(project_slug: str, max_entries: int = 10) -> list[str]:
+def load_recent_titles(project_slug: str, max_entries: int | None = 10) -> list[str]:
     """Read recent session titles from a project's chronicle sessions dir."""
     sdir = projects_dir() / project_slug / "sessions"
     if not sdir.exists():
         return []
     titles = []
-    for md_file in sorted(sdir.glob("*.md"), reverse=True)[:max_entries]:
+    files = sorted(sdir.glob("*.md"), reverse=True)
+    if max_entries and max_entries > 0:
+        files = files[:max_entries]
+    for md_file in files:
         try:
             with open(md_file, errors="ignore") as f:
                 first_line = f.readline().rstrip("\n")

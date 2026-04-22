@@ -189,9 +189,12 @@ def test_is_chronicle_hook_command_variants():
     from codex_chronicle.install_hooks import _is_chronicle_hook_command as f
     assert f("chronicle-hook") is True
     assert f("/Users/ehz/.local/bin/chronicle-hook") is True
+    assert f("/home/me/.codex-chronicle/runtime/codex-chronicle") is True
     assert f("chronicle-hook --flag") is True
     assert f("  chronicle-hook  ") is True
     assert f("chronicle") is False  # the CLI, not the hook
+    assert f("codex-chronicle") is False  # the CLI, not the hook
+    assert f("/usr/local/bin/codex-chronicle") is False
     assert f("fake-chronicle-hook") is False
     assert f("") is False
     assert f(None) is False

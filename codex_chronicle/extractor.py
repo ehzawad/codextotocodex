@@ -5,12 +5,11 @@ module extracts structured content while preserving chronological order for
 high-fidelity summarization.
 
 Two output formats:
-- digest_to_text(): filtered for LLM context window (80K chars default, with
-  front+tail middle-elision if the timeline exceeds it).
+- digest_to_text(): filtered for the LLM prompt. Defaults to no artificial
+  character cap; callers can pass max_chars to opt into front+tail elision.
 - timeline_to_log(): redacted chronological log for the session markdown.
-  The full timeline is kept, but individual tool results above ~10KB are
-  capped with a front+tail split, and secrets are masked in commands, tool
-  inputs, and tool outputs by the same redaction layer.
+  The full timeline is kept by default, and secrets are masked in commands,
+  tool inputs, and tool outputs by the same redaction layer.
 """
 
 import json
@@ -129,7 +128,7 @@ _SYSTEM_TAG_PATTERN = re.compile(
     re.DOTALL,
 )
 
-_MAX_TOOL_RESULT_CHARS = 10000
+_MAX_TOOL_RESULT_CHARS = 0
 
 
 def _is_real_user_prompt(content: str) -> bool:
@@ -325,8 +324,8 @@ def _extract_tool_result_text(content) -> str | None:
     # Redact secrets before truncation
     raw = _redact_secrets(raw)
 
-    # Cap at 10KB with front+tail for very large results
-    if len(raw) > _MAX_TOOL_RESULT_CHARS:
+    # Optional cap with front+tail for callers/tests that opt into a limit.
+    if _MAX_TOOL_RESULT_CHARS > 0 and len(raw) > _MAX_TOOL_RESULT_CHARS:
         half = _MAX_TOOL_RESULT_CHARS // 2
         raw = raw[:half] + "\n[... truncated ...]\n" + raw[-half:]
 
@@ -653,10 +652,11 @@ def extract_session(jsonl_path: str) -> SessionDigest:
     return digest
 
 
-def digest_to_text(digest: SessionDigest, max_chars: int = 80000) -> str:
+def digest_to_text(digest: SessionDigest, max_chars: int = 0) -> str:
     """Format a digest as an interleaved timeline for the LLM prompt.
 
-    Uses one-liner tool summaries and front+tail truncation for context window.
+    Uses one-liner tool summaries. Pass max_chars > 0 to opt into front+tail
+    truncation; default 0 means no Chronicle-imposed character cap.
     """
     parts = []
 
@@ -706,7 +706,7 @@ def digest_to_text(digest: SessionDigest, max_chars: int = 80000) -> str:
 
     timeline_text = "\n".join(timeline_parts)
 
-    if len(timeline_text) > max_chars:
+    if max_chars > 0 and len(timeline_text) > max_chars:
         front_budget = int(max_chars * 0.75)
         tail_budget = max_chars - front_budget
         front = timeline_text[:front_budget]

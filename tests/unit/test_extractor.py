@@ -7,7 +7,7 @@ A silent regression here would leak secrets into the codex_chronicle.
 Also covers:
 - JSONL parsing (user/assistant/tool_result timeline construction)
 - Tool-use extraction (Bash/Edit/Write/Read/Agent/MCP)
-- Tool result truncation at 10KB
+- Tool result preservation by default
 - User-prompt filtering (skip system-injected tags)
 - Sensitive file-path full-redaction (.env / .pem / .key)
 - System XML stripping that preserves user-typed HTML
@@ -217,12 +217,20 @@ class TestSystemTagStripping:
 # ---------- Tool-result truncation ----------
 
 class TestToolResultTruncation:
-    def test_large_result_truncated_with_marker(self):
-        big = "a" * (extractor._MAX_TOOL_RESULT_CHARS + 1000)
+    def test_large_result_not_truncated_by_default(self):
+        big = "a" * 20000
+        out = extractor._extract_tool_result_text(big)
+        assert out is not None
+        assert "[... truncated ...]" not in out
+        assert out == big
+
+    def test_large_result_truncates_when_cap_is_opted_in(self, monkeypatch):
+        monkeypatch.setattr(extractor, "_MAX_TOOL_RESULT_CHARS", 1000)
+        big = "a" * 2000
         out = extractor._extract_tool_result_text(big)
         assert out is not None
         assert "[... truncated ...]" in out
-        assert len(out) < extractor._MAX_TOOL_RESULT_CHARS + 100
+        assert len(out) < 1100
 
     def test_small_result_not_truncated(self):
         small = "short output"

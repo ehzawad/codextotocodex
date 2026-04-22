@@ -18,6 +18,8 @@ Usage:
         Recent sessions across all projects, newest first.
     codex-chronicle query search "term"
         Full-text search across all chronicle markdown files.
+    codex-chronicle context [PATH]
+        Print no-hook project context for Codex to read on demand.
 
     codex-chronicle rewind [N] [--since N] [--diff N] [--summary N]
         Navigate session history. View, compare, or summarize sessions.
@@ -86,6 +88,9 @@ def main():
     elif command == "query":
         from .query import main as query_main
         query_main()
+    elif command == "context":
+        from .context import main as context_main
+        context_main()
     elif command == "rewind":
         from .rewind import main as rewind_main
         rewind_main()

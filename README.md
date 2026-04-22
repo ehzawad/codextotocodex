@@ -44,7 +44,8 @@ codex-chronicle context
 ```
 
 `context` prints the same kind of previous-session context the hook used to
-inject, but only when you ask for it.
+inject, but only when you ask for it. It does not impose a small output cap by
+default; `--limit` and `--max-bytes` are explicit opt-in caps.
 
 Hooks remain available as an experimental opt-in. To let Codex inject prior
 session titles and log hook events automatically:
@@ -103,6 +104,9 @@ codex-chronicle insight
 codex-chronicle story
 codex-chronicle rewind --summary N
 ```
+
+Chronicle does not truncate session transcripts, tool output, or story input by
+default. The active model's context window is still the real upper bound.
 
 Background mode is opt-in:
 

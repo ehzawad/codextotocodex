@@ -114,10 +114,10 @@ def generate_story(project_name: str | None = None):
         session_blocks.append(f"=== SESSION: {filename} ===\n{content}")
     sessions_text = "\n\n".join(session_blocks)
 
-    # Truncate if enormous — keep head (early sessions) + tail (recent sessions)
-    # so the "Current State" section has fresh data to work with
-    max_chars = 400_000
-    if len(sessions_text) > max_chars:
+    # No Chronicle-imposed cap by default. Set a positive value here if a
+    # future caller needs an explicit story input budget.
+    max_chars = 0
+    if max_chars > 0 and len(sessions_text) > max_chars:
         half = max_chars // 2
         sessions_text = (sessions_text[:half]
                          + "\n\n[... middle sessions truncated ...]\n\n"

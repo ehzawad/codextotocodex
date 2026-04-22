@@ -11,6 +11,7 @@ set -euo pipefail
 #   CODEX_CHRONICLE_VERSION  - git tag, e.g. vX.Y.Z. Default: latest release.
 #   CODEX_CHRONICLE_BASE_URL - override download host (e.g. local mirror).
 #   CODEX_CHRONICLE_HOME     - data + runtime root. Default: $HOME/.codex-chronicle.
+#   CODEX_CHRONICLE_INSTALL_HOOKS=1 - opt in to experimental Codex hooks.
 
 REPO_SLUG="ehzawad/codextotocodex"
 CHRONICLE_HOME="${CODEX_CHRONICLE_HOME:-${CHRONICLE_HOME:-$HOME/.codex-chronicle}}"
@@ -234,11 +235,16 @@ if ! echo ":$PATH:" | grep -qF ":$BIN_DIR:"; then
 fi
 
 # -----------------------------------------------------------------------------
-# 8. Configure hooks (via the binary we just installed)
+# 8. Optionally configure hooks (via the binary we just installed)
 # -----------------------------------------------------------------------------
-echo "Configuring Codex hooks..."
-mkdir -p "${CODEX_HOME:-$HOME/.codex}"
-"$BIN_DIR/codex-chronicle" install-hooks
+if [ "${CODEX_CHRONICLE_INSTALL_HOOKS:-0}" = "1" ]; then
+    echo "Configuring experimental Codex hooks..."
+    mkdir -p "${CODEX_HOME:-$HOME/.codex}"
+    "$BIN_DIR/codex-chronicle" install-hooks
+else
+    echo "Skipping experimental Codex hooks (default)."
+    echo "  Opt in later with: codex-chronicle install-hooks"
+fi
 
 # -----------------------------------------------------------------------------
 # 9. Tighten data dir perms + restart daemon if needed
@@ -278,10 +284,13 @@ echo "  mode:                    $EFFECTIVE_MODE"
 echo ""
 echo "Installation complete!"
 echo ""
-echo "Restart Codex so the hooks take effect."
-echo ""
 echo "Other useful commands:"
 echo "  codex-chronicle doctor            # diagnose config, daemon status, drift"
+echo "  codex-chronicle context           # print no-hook project context"
 echo "  codex-chronicle update            # fetch and install the latest release"
 echo "  codex-chronicle install-daemon    # switch to background summarization mode"
 echo "  codex-chronicle query timeline    # recent sessions across all projects"
+if [ "${CODEX_CHRONICLE_INSTALL_HOOKS:-0}" = "1" ]; then
+    echo ""
+    echo "Restart Codex so the hooks take effect."
+fi

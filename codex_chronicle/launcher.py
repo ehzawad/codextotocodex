@@ -19,14 +19,14 @@ from pathlib import Path
 def _which(name: str) -> str | None:
     hit = shutil.which(name)
     if hit:
-        return str(Path(hit).resolve())
+        return str(Path(hit).absolute())
     return None
 
 
 def _user_bin(name: str) -> str | None:
     candidate = Path.home() / ".local" / "bin" / name
     if candidate.exists() and candidate.is_file():
-        return str(candidate.resolve())
+        return str(candidate)
     return None
 
 

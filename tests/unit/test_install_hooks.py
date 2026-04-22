@@ -20,6 +20,7 @@ def test_creates_fresh_settings_when_absent(tmp_path):
     data = json.loads(settings.read_text())
     assert "hooks" in data
     assert "SessionStart" in data["hooks"]
+    assert "codex_hooks = true" in (tmp_path / "config.toml").read_text()
 
 
 def test_merges_into_existing_valid_settings(tmp_path):
@@ -95,3 +96,110 @@ def test_uses_python_module_fallback_when_no_hook_binary_on_path(tmp_path, monke
     ]
     assert commands
     assert all("codex_chronicle.hook" in cmd for cmd in commands)
+
+
+def test_preserves_hook_symlink_name_for_single_binary_install(tmp_path, monkeypatch):
+    from codex_chronicle.install_hooks import install_hooks
+    settings = tmp_path / "settings.json"
+    bin_dir = tmp_path / "bin"
+    runtime_dir = tmp_path / ".codex-chronicle" / "runtime"
+    bin_dir.mkdir()
+    runtime_dir.mkdir(parents=True)
+    runtime_binary = runtime_dir / "codex-chronicle"
+    runtime_binary.write_text("#!/bin/sh\n")
+    runtime_binary.chmod(0o755)
+    hook_link = bin_dir / "codex-chronicle-hook"
+    hook_link.symlink_to(runtime_binary)
+    monkeypatch.setenv("PATH", str(bin_dir))
+
+    install_hooks(str(settings))
+
+    data = json.loads(settings.read_text())
+    commands = [
+        h["command"]
+        for groups in data["hooks"].values()
+        for group in groups
+        for h in group.get("hooks", [])
+    ]
+    assert commands
+    assert all(cmd == str(hook_link) for cmd in commands)
+    assert all("/runtime/codex-chronicle" not in cmd for cmd in commands)
+
+
+def test_reinstall_removes_legacy_resolved_runtime_hook(tmp_path, monkeypatch):
+    from codex_chronicle.install_hooks import install_hooks
+    settings = tmp_path / "settings.json"
+    bin_dir = tmp_path / "bin"
+    runtime_dir = tmp_path / ".codex-chronicle" / "runtime"
+    bin_dir.mkdir()
+    runtime_dir.mkdir(parents=True)
+    runtime_binary = runtime_dir / "codex-chronicle"
+    runtime_binary.write_text("#!/bin/sh\n")
+    runtime_binary.chmod(0o755)
+    hook_link = bin_dir / "codex-chronicle-hook"
+    hook_link.symlink_to(runtime_binary)
+    monkeypatch.setenv("PATH", str(bin_dir))
+    settings.write_text(json.dumps({
+        "hooks": {
+            "Stop": [{
+                "hooks": [
+                    {"type": "command", "command": str(runtime_binary), "timeout": 30},
+                    {"type": "command", "command": "user-hook"},
+                ],
+            }],
+        },
+    }))
+
+    install_hooks(str(settings))
+
+    data = json.loads(settings.read_text())
+    all_commands = [
+        h["command"]
+        for groups in data["hooks"].values()
+        for group in groups
+        for h in group.get("hooks", [])
+    ]
+    assert str(runtime_binary) not in all_commands
+    assert "user-hook" in all_commands
+    assert all_commands.count(str(hook_link)) == 3
+
+
+def test_reinstall_removes_legacy_runtime_hook_from_stale_event(tmp_path, monkeypatch):
+    from codex_chronicle.install_hooks import install_hooks
+    settings = tmp_path / "settings.json"
+    bin_dir = tmp_path / "bin"
+    runtime_dir = tmp_path / ".codex-chronicle" / "runtime"
+    bin_dir.mkdir()
+    runtime_dir.mkdir(parents=True)
+    runtime_binary = runtime_dir / "codex-chronicle"
+    runtime_binary.write_text("#!/bin/sh\n")
+    runtime_binary.chmod(0o755)
+    hook_link = bin_dir / "codex-chronicle-hook"
+    hook_link.symlink_to(runtime_binary)
+    monkeypatch.setenv("PATH", str(bin_dir))
+    settings.write_text(json.dumps({
+        "hooks": {
+            "SessionEnd": [{"hooks": [{"command": str(runtime_binary)}]}],
+            "MyEvent": [{"matcher": "", "hooks": []}],
+        },
+    }))
+
+    install_hooks(str(settings))
+
+    data = json.loads(settings.read_text())
+    assert "SessionEnd" not in data["hooks"]
+    assert data["hooks"]["MyEvent"] == [{"matcher": "", "hooks": []}]
+
+
+def test_custom_hooks_path_enables_sibling_config_not_real_home(tmp_path, monkeypatch):
+    from codex_chronicle.install_hooks import install_hooks
+    real_home = tmp_path / "real-home"
+    custom = tmp_path / "custom"
+    real_home.mkdir()
+    custom.mkdir()
+    monkeypatch.setenv("HOME", str(real_home))
+
+    install_hooks(str(custom / "hooks.json"))
+
+    assert (custom / "config.toml").exists()
+    assert not (real_home / ".codex" / "config.toml").exists()

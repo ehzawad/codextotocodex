@@ -15,6 +15,7 @@ from pathlib import Path
 from .launcher import resolve_hook_invocation, shell_join
 
 HOOK_COMMAND = "codex-chronicle-hook"
+LEGACY_RUNTIME_COMMAND = "codex-chronicle"
 
 
 def resolved_hook_command() -> str:
@@ -62,6 +63,10 @@ def default_config_path() -> Path:
     return Path(os.environ.get("CODEX_HOME", Path.home() / ".codex")) / "config.toml"
 
 
+def _config_path_for_hooks_path(hooks_path: Path) -> Path:
+    return hooks_path.parent / "config.toml"
+
+
 def enable_codex_hooks(config_path: str | Path | None = None) -> None:
     path = Path(config_path) if config_path is not None else default_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -79,11 +84,32 @@ def enable_codex_hooks(config_path: str | Path | None = None) -> None:
     path.write_text(text.lstrip("\n"))
 
 
-def _has_chronicle_hook(matcher_group: dict) -> bool:
-    for hook in matcher_group.get("hooks", []):
-        if _is_chronicle_hook_command(hook.get("command")):
-            return True
-    return False
+def _without_chronicle_hook_entries(matcher_groups: list) -> list:
+    kept_groups = []
+    for mg in matcher_groups:
+        if not isinstance(mg, dict):
+            kept_groups.append(mg)
+            continue
+        entries = mg.get("hooks")
+        if not isinstance(entries, list):
+            kept_groups.append(mg)
+            continue
+
+        removed = False
+        kept_entries = []
+        for hook in entries:
+            command = hook.get("command") if isinstance(hook, dict) else None
+            if _is_chronicle_hook_command(command):
+                removed = True
+            else:
+                kept_entries.append(hook)
+        if not removed:
+            kept_groups.append(mg)
+        elif kept_entries:
+            new_mg = dict(mg)
+            new_mg["hooks"] = kept_entries
+            kept_groups.append(new_mg)
+    return kept_groups
 
 
 def install_hooks(settings_path: str | None = None):
@@ -111,20 +137,29 @@ def install_hooks(settings_path: str | None = None):
     if not isinstance(hooks, dict):
         hooks = {}
 
+    for event_name in list(hooks.keys()):
+        existing = hooks[event_name]
+        if not isinstance(existing, list):
+            continue
+        stripped = _without_chronicle_hook_entries(existing)
+        if stripped:
+            hooks[event_name] = stripped
+        else:
+            del hooks[event_name]
+
     for event_name, chronicle_matchers in chronicle_hooks().items():
         existing = hooks.get(event_name, [])
         if not isinstance(existing, list):
             existing = []
-        existing = [mg for mg in existing if not _has_chronicle_hook(mg)]
         hooks[event_name] = existing + chronicle_matchers
 
     settings["hooks"] = hooks
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(settings, indent=2) + "\n")
-    enable_codex_hooks()
+    enable_codex_hooks(_config_path_for_hooks_path(path))
     print(f"Configured Codex Chronicle hooks in {path}")
-    print(f"Enabled features.codex_hooks in {default_config_path()}")
+    print(f"Enabled features.codex_hooks in {_config_path_for_hooks_path(path)}")
 
 
 def _is_chronicle_hook_command(cmd) -> bool:
@@ -139,7 +174,14 @@ def _is_chronicle_hook_command(cmd) -> bool:
     first = os.path.basename(parts[0])
     if first in {HOOK_COMMAND, "chronicle-hook"}:
         return True
+    if first == LEGACY_RUNTIME_COMMAND and _looks_like_runtime_binary(parts[0]):
+        return True
     return len(parts) >= 3 and parts[1] == "-m" and parts[2] == "codex_chronicle.hook"
+
+
+def _looks_like_runtime_binary(path: str) -> bool:
+    normalized = path.replace("\\", "/")
+    return "/.codex-chronicle/runtime/" in normalized
 
 
 def uninstall_hooks(settings_path: str | None = None, dry_run: bool = False) -> int:
