@@ -25,17 +25,29 @@ the hook/config files when you explicitly run `codex-chronicle install-hooks`.
   follow-ups, and open questions.
 - Per-session markdown plus a cumulative `chronicle.md` per project.
 
-## Install From This Checkout
+## Install
 
 ```bash
-cd /home/synesis/codextotocodex
+cd codextotocodex
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -e .
 codex-chronicle doctor
 ```
 
-To let Codex inject prior session titles and log hook events:
+The default workflow does not use Codex hooks. Run Chronicle explicitly when
+you want memory:
+
+```bash
+codex-chronicle process --workers 5
+codex-chronicle context
+```
+
+`context` prints the same kind of previous-session context the hook used to
+inject, but only when you ask for it.
+
+Hooks remain available as an experimental opt-in. To let Codex inject prior
+session titles and log hook events automatically:
 
 ```bash
 codex-chronicle install-hooks
@@ -50,20 +62,29 @@ codex_hooks = true
 
 in `~/.codex/config.toml`. Restart Codex after installing hooks.
 
-For a user-style install outside the checkout:
+For a user-style install (no clone required):
 
 ```bash
-bash install.sh
+curl -fsSL https://raw.githubusercontent.com/ehzawad/codextotocodex/main/install.sh | bash
 ```
 
-`install.sh` prefers a prebuilt release asset when one exists. If no matching
-asset is published yet, it falls back to a source-based install under:
+Or, from a checkout: `bash install.sh`. Either way, the script downloads the
+prebuilt release for `linux-x86_64` or `darwin-arm64`, verifies its SHA256,
+and atomically swaps it into `~/.codex-chronicle/runtime/`. If the download
+fails, it falls back to a source-based install in a managed venv under
+`~/.codex-chronicle/runtime/venv`.
 
-```text
-~/.codex-chronicle/runtime/venv
+Releases are built by `.github/workflows/release.yml` on each push to `main`;
+the workflow keeps only the latest GitHub release and deletes older release
+tags on each publish.
+
+The installer does not enable hooks by default. To opt in during install:
+
+```bash
+CODEX_CHRONICLE_INSTALL_HOOKS=1 bash install.sh
 ```
 
-and creates these symlinks:
+Symlinks land at:
 
 ```text
 ~/.local/bin/codex-chronicle
@@ -72,11 +93,12 @@ and creates these symlinks:
 
 ## Default Mode
 
-Foreground mode is the default. Hooks can log events and inject context, but
-Codex Chronicle does not spend model tokens unless you run one of:
+Foreground mode is the default. Codex Chronicle does not spend model tokens
+unless you run one of:
 
 ```bash
 codex-chronicle process
+codex-chronicle context --include-chronicle
 codex-chronicle insight
 codex-chronicle story
 codex-chronicle rewind --summary N
@@ -97,6 +119,7 @@ codex-chronicle query projects
 codex-chronicle query sessions
 codex-chronicle query timeline --limit 20
 codex-chronicle query search "auth"
+codex-chronicle context
 
 codex-chronicle process --dry-run
 codex-chronicle process --workers 5
