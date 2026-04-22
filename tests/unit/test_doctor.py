@@ -79,6 +79,26 @@ def test_run_text_mode_prints_human_report(isolated_doctor, capsys):
     assert rc in (0, 1)
 
 
+def test_collect_diagnostics_prefers_invoked_binary_over_path(
+    isolated_doctor, monkeypatch, tmp_path,
+):
+    from codex_chronicle import doctor
+
+    installed = tmp_path / "installed" / "codex-chronicle"
+    installed.parent.mkdir(parents=True)
+    installed.write_text("#!/bin/sh\n")
+
+    other = tmp_path / "other-bin" / "codex-chronicle"
+    other.parent.mkdir(parents=True)
+    other.write_text("#!/bin/sh\n")
+
+    monkeypatch.setattr(doctor.sys, "argv", [str(installed), "doctor", "--json"])
+    monkeypatch.setenv("PATH", str(other.parent))
+
+    data = doctor.collect_diagnostics()
+    assert data["chronicle_binary"] == str(installed.absolute())
+
+
 def test_run_exit_code_one_on_drift(isolated_doctor, monkeypatch, capsys):
     """Drift warning → exit code 1, in both text and JSON."""
     from codex_chronicle import doctor, mode, service

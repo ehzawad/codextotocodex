@@ -15,6 +15,7 @@ import os
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any, Sequence
 
 from . import service
@@ -27,6 +28,29 @@ from .locks import daemon_is_running, processing_lock_held
 from .mode import get_processing_mode
 from .storage import is_succeeded, is_terminal_failure, list_failed
 from .source import iter_session_files, read_session_meta
+
+
+def _chronicle_binary() -> str | None:
+    """Best-effort path to the Codex Chronicle CLI currently in use.
+
+    Prefer the actual invoked executable when this process was launched via an
+    installed `codex-chronicle` binary/symlink. Falling back to PATH lookup can
+    be misleading when the shell environment contains an editable-install
+    console script earlier on PATH than the binary the user explicitly ran.
+    """
+    if getattr(sys, "frozen", False):
+        return str(Path(sys.executable).resolve())
+
+    argv0 = sys.argv[0] if sys.argv else ""
+    if argv0:
+        name = Path(argv0).name
+        if name == "codex-chronicle":
+            probe = Path(argv0).expanduser()
+            if probe.exists():
+                return str(probe.absolute())
+
+    hit = shutil.which("codex-chronicle")
+    return str(Path(hit).absolute()) if hit else None
 
 
 def _codex_version(codex_bin) -> str | None:
@@ -100,7 +124,7 @@ def collect_diagnostics() -> dict[str, Any]:
             and config_error is None
         ),
         "version": __version__,
-        "chronicle_binary": shutil.which("codex-chronicle"),
+        "chronicle_binary": _chronicle_binary(),
         "mode": mode,
         "config_path": str(config_file()),
         "codex": {
