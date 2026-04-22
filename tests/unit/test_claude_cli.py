@@ -26,6 +26,16 @@ def _make_stub_codex(dest: Path, script_body: str = "print('{\"ok\": true}')") -
     return dest
 
 
+def test_last_assistant_message_from_v0122_jsonl_shape():
+    stream = "\n".join([
+        '{"type":"thread.started","thread_id":"x"}',
+        '{"type":"turn.started"}',
+        '{"type":"item.completed","item":{"type":"agent_message","text":"HELLO"}}',
+        '{"type":"turn.completed","usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1}}',
+    ])
+    assert codex_cli._last_assistant_message_from_jsonl(stream) == "HELLO"
+
+
 class TestResolveCodexBinary:
     def test_finds_via_path(self, tmp_path, monkeypatch):
         bin_dir = tmp_path / "bin"

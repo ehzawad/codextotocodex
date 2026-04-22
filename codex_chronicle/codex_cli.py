@@ -462,11 +462,21 @@ def _extract_total_cost(stdout: str, top_level: Optional[dict]) -> float:
 
 
 def _last_assistant_message_from_jsonl(stdout: str) -> str:
+    """Extract the last assistant message from `codex exec --json` stdout.
+
+    Codex CLI event shapes seen in the wild:
+    - Legacy (older CLIs): top-level `message` / `content` or `payload.message`
+      / `payload.text`.
+    - v0.122.0+: `{"type":"item.completed","item":{"type":"agent_message",
+      "text":"..."}}`.
+    """
     last = ""
     for line in stdout.splitlines():
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
             continue
         msg = event.get("message") or event.get("content") or ""
         if isinstance(msg, str) and msg.strip():
@@ -474,6 +484,11 @@ def _last_assistant_message_from_jsonl(stdout: str) -> str:
         payload = event.get("payload")
         if isinstance(payload, dict):
             text = payload.get("message") or payload.get("text")
+            if isinstance(text, str) and text.strip():
+                last = text.strip()
+        item = event.get("item")
+        if isinstance(item, dict):
+            text = item.get("text") or item.get("message")
             if isinstance(text, str) and text.strip():
                 last = text.strip()
     return last

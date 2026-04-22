@@ -424,3 +424,69 @@ class TestExtractSession:
         digest = extractor.extract_session(str(jsonl))
         assert len(digest.user_prompts) == 1
         assert digest.user_prompts[0].text == "real question here"
+
+    def test_codex_injected_user_blocks_filtered(self, tmp_path):
+        sid = str(uuid.uuid4())
+        proj = tmp_path / "-tmp-codex"
+        proj.mkdir()
+        now = "2026-04-22T00:00:00Z"
+        real_prompt = "please check whether the release build is failing"
+        jsonl = self._make_jsonl(proj, sid, [
+            {
+                "type": "session_meta",
+                "timestamp": now,
+                "payload": {
+                    "id": sid,
+                    "timestamp": now,
+                    "cwd": "/tmp/codex",
+                },
+            },
+            {
+                "type": "response_item",
+                "timestamp": now,
+                "payload": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": "# AGENTS.md instructions for /tmp/codex\n\n<INSTRUCTIONS>\nUse rg.",
+                        }
+                    ],
+                },
+            },
+            {
+                "type": "event_msg",
+                "timestamp": now,
+                "payload": {
+                    "type": "user_message",
+                    "message": real_prompt,
+                },
+            },
+            {
+                "type": "response_item",
+                "timestamp": now,
+                "payload": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": real_prompt}],
+                },
+            },
+            {
+                "type": "response_item",
+                "timestamp": now,
+                "payload": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": "<skill>\n<name>claude-opinion</name>\n<path>/tmp/codex/SKILL.md</path>",
+                        }
+                    ],
+                },
+            },
+        ])
+        digest = extractor.extract_session(str(jsonl))
+        assert len(digest.user_prompts) == 1
+        assert digest.user_prompts[0].text == real_prompt

@@ -106,7 +106,12 @@ def _redact_secrets(text: str) -> str:
     return _SECRET_PATTERNS.sub("[REDACTED]", text)
 
 
-# Patterns to skip in user messages (system-injected content)
+# Patterns to skip in user messages (system-injected content).
+# Codex CLI v0.122.0+ wraps AGENTS.md, skill registration, tool permission
+# policy, and apps/skills instruction packs as role=user `response_item.message`
+# blocks. Without these prefixes they pollute `user_prompts`, break the
+# self-session guard in filtering.should_skip (which only checks index 0),
+# and waste summarizer tokens.
 _SKIP_PREFIXES = (
     "<environment_context>",
     "<local-command-caveat>",
@@ -117,6 +122,13 @@ _SKIP_PREFIXES = (
     "<system-reminder>",
     "<task-notification>",
     "[Request interrupted by user]",
+    "# AGENTS.md",
+    "<INSTRUCTIONS>",
+    "<skill>",
+    "<permissions instructions>",
+    "<apps_instructions>",
+    "<skills_instructions>",
+    "<user_instructions>",
 )
 
 # Only strip known system-injected XML tags, not arbitrary angle-bracket content.
