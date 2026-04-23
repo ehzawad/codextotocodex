@@ -211,6 +211,21 @@ class TestSpawnDaemonCommand:
 
 
 class TestErrorTrapping:
+    @pytest.mark.parametrize("payload", ["", "\n", "   \n", "\t"])
+    def test_empty_stdin_is_noop(self, chronicle_env, monkeypatch, capsys, payload):
+        import codex_chronicle.hook as hook_mod
+
+        monkeypatch.setattr(sys, "stdin", io.StringIO(payload))
+        hook_mod.main()
+        out, err = capsys.readouterr()
+
+        err_log = chronicle_env["chronicle_dir"] / "hook-errors.log"
+        assert not err_log.exists()
+        assert _read_events_jsonl(chronicle_env["chronicle_dir"]) == []
+        assert not (chronicle_env["chronicle_dir"] / "events.jsonl").exists()
+        assert out == ""
+        assert err == ""
+
     def test_malformed_stdin_does_not_crash(self, chronicle_env, monkeypatch):
         """A bug in hook.py MUST NOT propagate — it would block the user's
         Codex session. Errors are logged to ~/.codex-chronicle/hook-errors.log."""

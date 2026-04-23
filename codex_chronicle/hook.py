@@ -71,7 +71,10 @@ def main():
     try:
         chronicle_dir().mkdir(parents=True, exist_ok=True)
         os.chmod(str(chronicle_dir()), 0o700)
-        data = json.loads(sys.stdin.read())
+        raw_stdin = sys.stdin.read()
+        if not raw_stdin.strip():
+            return
+        data = json.loads(raw_stdin)
         event_name = data.get("hook_event_name", "")
         data["chronicle_timestamp"] = datetime.now(timezone.utc).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
